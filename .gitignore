@@ -1,0 +1,20 @@
+# Python / Virtual Environment
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.python-version
+venv/
+env/
+ENV/
+
+# IDE and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Data & Results (exclude raw NASA text files and local metric outputs)
+data/*.txt
+data/*.csv
+results/*.json

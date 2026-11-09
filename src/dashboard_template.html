@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AeroGuard RUL · Engine fleet health</title>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+:root{--bg:#0b1824;--panel:#12263a;--panel2:#0f2031;--line:#26435d;--tx:#e9f0f6;--mu:#8fa8bd;
+--cy:#4cc9f0;--am:#ffb547;--co:#ff6b5b;--mi:#5ee0b0;font-family:Manrope,system-ui,sans-serif}
+*{box-sizing:border-box;margin:0}
+body{background:radial-gradient(1200px 600px at 80% -10%,#16405f55,transparent),var(--bg);color:var(--tx);padding:32px clamp(16px,4vw,56px) 64px;font-variant-numeric:tabular-nums}
+h1{font-size:clamp(28px,4vw,46px);font-weight:800;letter-spacing:-.03em;line-height:1.05;max-width:18ch}
+h2{font-size:15px;font-weight:700;margin-bottom:4px}
+p.sub{color:var(--mu);font-size:13px;line-height:1.5;max-width:70ch}
+.top{display:grid;grid-template-columns:1.1fr 1fr;gap:32px;align-items:end;margin-bottom:28px}
+.src{display:inline-block;font-size:12px;color:var(--am);border:1px solid #ffb54755;border-radius:99px;padding:4px 12px;margin-bottom:16px}
+.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);border-radius:14px;overflow:hidden}
+.kpi{background:var(--panel);padding:16px 18px}.kpi b{display:block;font-size:30px;font-weight:800;letter-spacing:-.02em}
+.kpi span{font-size:12px;color:var(--mu)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px;margin-top:18px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}.grid2 .card{margin-top:18px}
+#matrix{display:grid;grid-template-columns:repeat(auto-fill,minmax(22px,1fr));gap:5px;margin-top:14px}
+.cell{aspect-ratio:1;border-radius:5px;cursor:pointer;border:2px solid transparent;transition:transform .12s}
+.cell:hover{transform:scale(1.18)}.cell.sel{border-color:#fff}
+.healthy{background:var(--mi)}.schedule{background:var(--am)}.critical{background:var(--co)}
+.legend{display:flex;gap:18px;font-size:12px;color:var(--mu);margin-top:12px;flex-wrap:wrap}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px}
+.chips{display:flex;gap:8px;margin:12px 0}.chip{font:600 12px Manrope;color:var(--mu);background:none;border:1px solid var(--line);border-radius:99px;padding:6px 14px;cursor:pointer}
+.chip.on{color:var(--bg);background:var(--cy);border-color:var(--cy)}
+.wrap{max-height:340px;overflow:auto}table{width:100%;border-collapse:collapse;font-size:13px}
+th{position:sticky;top:0;background:var(--panel);text-align:right;color:var(--mu);font-weight:500;padding:8px}th:first-child,td:first-child{text-align:left}
+td{padding:8px;text-align:right;border-top:1px solid #1d374e}tr.row{cursor:pointer}tr.row:hover td{background:#173149}
+.pill{padding:2px 10px;border-radius:99px;font-size:11px;font-weight:700;color:#0b1824}
+.ch{position:relative;height:300px;margin-top:10px}
+.sel-head{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px}
+select{background:var(--panel2);color:var(--tx);border:1px solid var(--line);border-radius:8px;padding:8px 12px;font:600 13px Manrope}
+.note{font-size:12px;color:var(--mu);margin-top:28px;line-height:1.6;max-width:90ch}
+:focus-visible{outline:2px solid var(--cy);outline-offset:2px}
+@media(max-width:900px){.top,.grid2{grid-template-columns:1fr}}
+</style></head><body>
+<div class="top">
+ <div><span class="src" id="src"></span><h1>Which engines need a shop visit, and when?</h1>
+  <p class="sub" style="margin-top:14px">Remaining useful life with a calibrated uncertainty band for every engine in the fleet. A safe horizon tells maintenance planners how many flight cycles they can rely on, with a statistical guarantee rather than a best guess.</p></div>
+ <div class="kpis" id="kpis"></div>
+</div>
+
+<div class="card"><h2>Fleet at a glance</h2>
+ <p class="sub">One square per engine, coloured by its safe horizon. Select a square to open that engine below.</p>
+ <div id="matrix"></div>
+ <div class="legend"><span><i class="critical"></i>Replace within one shop slot</span><span><i class="schedule"></i>Schedule a visit</span><span><i class="healthy"></i>No action</span></div>
+</div>
+
+<div class="card"><div class="sel-head"><div><h2 id="enghead">Engine</h2><p class="sub" id="engsub"></p></div>
+ <label class="sub">Engine <select id="sel"></select></label></div>
+ <div class="grid2" style="margin-top:6px"><div><div class="ch"><canvas id="cRul"></canvas></div></div><div><div class="ch"><canvas id="cHi"></canvas></div></div></div>
+</div>
+
+<div class="grid2">
+ <div class="card"><h2>Maintenance plan</h2>
+  <div class="chips" id="chips"></div><div class="wrap"><table><thead><tr><th>Engine</th><th>Status</th><th>Safe horizon</th><th>Median</th><th>90% range</th><th>Actual</th></tr></thead><tbody id="tb"></tbody></table></div></div>
+ <div class="card"><h2>Predicted against actual</h2><p class="sub">Median prediction for each engine's last observed cycle. Points on the diagonal are perfect.</p><div class="ch"><canvas id="cSc"></canvas></div></div>
+ <div class="card"><h2>What the policy costs the fleet</h2><p class="sub" id="costsub"></p><div class="ch"><canvas id="cCost"></canvas></div></div>
+ <div class="card"><h2>Sensors driving the prediction</h2><p class="sub">Share of the model's accuracy that disappears when each sensor is scrambled.</p><div class="ch"><canvas id="cImp"></canvas></div></div>
+</div>
+<p class="note">Remaining life is capped at 125 cycles during training, the usual convention for this dataset, because early degradation is invisible in the sensors. The 90% range and the safe horizon are conformally calibrated on engines the model never saw in training. Cost figures use the assumptions listed under the maintenance cost chart and are illustrative.</p>
+
+<script>
+const D=/*__DATA__*/null;
+const C={cy:'#4cc9f0',am:'#ffb547',co:'#ff6b5b',mi:'#5ee0b0',mu:'#8fa8bd',gr:'#1d374e'};
+Chart.defaults.color=C.mu;Chart.defaults.font.family='Manrope';Chart.defaults.borderColor=C.gr;
+const col={healthy:C.mi,schedule:C.am,critical:C.co},lab={healthy:'No action',schedule:'Schedule',critical:'Replace now'};
+const $=i=>document.getElementById(i);
+$('src').textContent=D.meta.source+' · '+D.meta.dataset;
+$('kpis').innerHTML=[[D.metrics.rmse,'RMSE, flight cycles'],[D.metrics.nasa.toLocaleString(),'NASA asymmetric score'],[D.metrics.coverage+'%','Coverage of 90% range'],
+[D.metrics.safe+'%','Safe horizon held'],[D.metrics.saving+'%','Cost cut vs best baseline'],[D.meta.sensors,'Informative sensors']].map(k=>`<div class="kpi"><b>${k[0]}</b><span>${k[1]}</span></div>`).join('');
+const fl=[...D.fleet].sort((a,b)=>a.safe-b.safe);let cur=fl[0].unit,filt='all',charts={};
+$('matrix').innerHTML=fl.map(f=>`<div class="cell ${f.status}" data-u="${f.unit}" tabindex="0" title="Engine ${f.unit}: safe horizon ${f.safe} cycles"></div>`).join('');
+$('sel').innerHTML=[...D.fleet].sort((a,b)=>a.unit-b.unit).map(f=>`<option value="${f.unit}">Engine ${f.unit}</option>`).join('');
+$('chips').innerHTML=['all','critical','schedule','healthy'].map(s=>`<button class="chip" data-f="${s}">${s=='all'?'All engines':lab[s]}</button>`).join('');
+function table(){$('tb').innerHTML=fl.filter(f=>filt=='all'||f.status==filt).map(f=>`<tr class="row" data-u="${f.unit}"><td>${f.unit}</td><td><span class="pill" style="background:${col[f.status]}">${lab[f.status]}</span></td><td>${f.safe}</td><td>${f.pred}</td><td>${f.lo}–${f.hi}</td><td>${f.true}</td></tr>`).join('');
+ document.querySelectorAll('.chip').forEach(c=>c.classList.toggle('on',c.dataset.f==filt))}
+function mk(id,cfg){if(charts[id])charts[id].destroy();charts[id]=new Chart($(id),cfg);return charts[id]}
+const base={responsive:true,maintainAspectRatio:false,animation:{duration:350},plugins:{legend:{labels:{boxWidth:10,usePointStyle:true}}}};
+function engine(u){cur=+u;const e=D.engines[u],f=D.fleet.find(x=>x.unit==cur);$('sel').value=cur;
+ document.querySelectorAll('.cell').forEach(c=>c.classList.toggle('sel',c.dataset.u==cur));
+ $('enghead').textContent='Engine '+cur+' · '+lab[f.status];
+ $('engsub').textContent=`Observed ${f.cycles} cycles. Median ${f.pred} cycles left (90% range ${f.lo}–${f.hi}); safe horizon ${f.safe}. Actual: ${f.true}.`;
+ const L=e.t;
+ mk('cRul',{type:'line',data:{labels:L,datasets:[
+  {label:'Lower bound',data:e.lo,borderWidth:0,pointRadius:0,fill:false,tension:.3},
+  {label:'90% range',data:e.up,borderWidth:0,pointRadius:0,backgroundColor:'#4cc9f033',fill:'-1',tension:.3},
+  {label:'Median RUL',data:e.p,borderColor:C.cy,borderWidth:2.5,pointRadius:0,tension:.3},
+  {label:'Safe horizon',data:e.sf,borderColor:C.am,borderWidth:2,borderDash:[6,4],pointRadius:0,tension:.3},
+  {label:'Actual',data:e.truth,borderColor:'#e9f0f6',borderWidth:1.5,pointRadius:0,tension:.1}]},
+  options:{...base,plugins:{legend:{labels:{filter:i=>i.text!='Lower bound',boxWidth:10,usePointStyle:true}},title:{display:true,text:'Remaining useful life as the engine ages',color:'#e9f0f6'}},scales:{x:{title:{display:true,text:'Flight cycle'}},y:{title:{display:true,text:'Cycles left'},min:0}}}});
+ mk('cHi',{type:'line',data:{labels:e.hx,datasets:[{label:'Health index',data:e.hi,borderColor:C.mi,backgroundColor:'#5ee0b022',fill:true,pointRadius:0,borderWidth:2.5,tension:.3}]},
+  options:{...base,plugins:{legend:{display:false},title:{display:true,text:'Learned health index (1 is new)',color:'#e9f0f6'}},scales:{x:{title:{display:true,text:'Flight cycle'}},y:{min:0,max:1}}}})}
+document.addEventListener('click',e=>{const t=e.target.closest('[data-u]');if(t)engine(t.dataset.u);const c=e.target.closest('.chip');if(c){filt=c.dataset.f;table()}});
+document.addEventListener('keydown',e=>{if(e.key=='Enter'&&e.target.dataset&&e.target.dataset.u)engine(e.target.dataset.u)});
+$('sel').onchange=e=>engine(e.target.value);
+const mx=Math.max(...D.fleet.map(f=>Math.max(f.true,f.hi)))+10;
+mk('cSc',{type:'scatter',data:{datasets:[{label:'Engines',data:D.fleet.map(f=>({x:f.true,y:f.pred})),backgroundColor:D.fleet.map(f=>col[f.status]),pointRadius:4},
+ {label:'Perfect',type:'line',data:[{x:0,y:0},{x:mx,y:mx}],borderColor:C.mu,borderDash:[5,5],pointRadius:0,borderWidth:1}]},
+ options:{...base,scales:{x:{title:{display:true,text:'Actual cycles left'},min:0},y:{title:{display:true,text:'Predicted cycles left'},min:0,max:140}}}});
+const P=D.policies,pk=Object.keys(P);
+$('costsub').textContent=`Failure ${D.meta.cost.failure}, planned replacement ${D.meta.cost.planned}, ${D.meta.cost.waste_per_cycle} per unused cycle. Lower is better.`;
+mk('cCost',{type:'bar',data:{labels:pk,datasets:[{data:pk.map(k=>Math.round(P[k])),backgroundColor:pk.map(k=>k=='Conformal safe horizon'?C.cy:'#35546e'),borderRadius:6}]},
+ options:{...base,plugins:{legend:{display:false}},scales:{y:{title:{display:true,text:'Total fleet cost'}}}}});
+mk('cImp',{type:'bar',data:{labels:D.importance.map(i=>i[0]),datasets:[{data:D.importance.map(i=>i[1]),backgroundColor:C.am,borderRadius:5}]},
+ options:{...base,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{title:{display:true,text:'Share of importance, %'}}}}});
+table();engine(cur);
+</script></body></html>
